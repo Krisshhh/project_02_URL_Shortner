@@ -1,9 +1,15 @@
 const express = require('express');
-const path=require('path');
+const path = require('path');
+const cookieParser=require('cookie-parser');
 const { connectToMongoDB } = require('./connect');
+const { restrictToLoggedinUserOnly, checkAuth} = require('./middlewares/auth');
+
+const URL = require('./models/url');
+
 const urlRoute = require('./routes/url');
 const staticRoute = require('./routes/StaticRouter');
-const URL=require('./models/url');
+const userRoute = require('./routes/user');
+
 const app = express();
 const PORT = 8001;
 
@@ -14,6 +20,7 @@ app.set('views', path.resolve('./views')); // added
 
 app.use(express.json()); //Middleware
 app.use(express.urlencoded({ extended: false })); //Middleware to support form data
+app.use(cookieParser()); //Middleware to support cookies
 
 
 
@@ -36,21 +43,35 @@ app.use(express.urlencoded({ extended: false })); //Middleware to support form d
 //    });
 // });
 
-app.use("/url", urlRoute);
+app.use("/url",restrictToLoggedinUserOnly, urlRoute); //this middleware will run only when we hv logged in user
+app.use("/user", userRoute);
+app.use('/',checkAuth, staticRoute);
 
-app.use('/', staticRoute);
-
-app.get('/url/:shortId', async (req, res) => { // url changed
+// app.get('/url/:shortId', async (req, res) => { // url changed
+//    const shortId = req.params.shortId;
+//    const entry= await URL.findOneAndUpdate({
+//       shortId
+//    }, {
+//       $push: {
+//          visitHistory: {
+//             timestamp: Date.now(),
+//          },
+//       },
+//    });
+//    res.redirect(entry.redirectURL);
+// });
+app.get('/url/:shortId', async (req, res) => {
    const shortId = req.params.shortId;
-   const entry= await URL.findOneAndUpdate({
-      shortId
-   }, {
-      $push: {
-         visitHistory: {
-            timestamp: Date.now(),
-         },
-      },
-   });
+   const entry = await URL.findOneAndUpdate(
+      { shortId },
+      { $push: { visitHistory: { timestamp: Date.now() } } },
+      { new: true } // Ensure updated document is returned
+   );
+
+   if (!entry) {
+      return res.status(404).send("Short URL not found");
+   }
+
    res.redirect(entry.redirectURL);
 });
 
